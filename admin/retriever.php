@@ -1,73 +1,57 @@
 <?php
-require_once __DIR__ . '/includes/admin_auth.php';
-$success = null; $error = null;
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $mode = $_POST['mode'] ?? '';
-    if ($mode === 'mangadex') {
-        $mangaId = trim($_POST['mangadex_id'] ?? '');
-        $lang = $_POST['language'] ?? 'en';
-        $cmd = PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/../scripts/manga_retriever.php') . ' --mangadex ' . escapeshellarg($mangaId) . ' --lang ' . escapeshellarg($lang);
-        $output = shell_exec($cmd . ' 2>&1');
-        $success = 'Retriever finished. Output: ' . htmlspecialchars($output);
-    } elseif ($mode === 'upload') {
-        if (!isset($_FILES['zip']) || !$_FILES['zip']['tmp_name']) {
-            $error = 'No ZIP uploaded.';
-        } else {
-            $tmp = $_FILES['zip']['tmp_name'];
-            $cmd = PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/../scripts/manga_retriever.php') . ' --upload ' . escapeshellarg($tmp);
-            $output = shell_exec($cmd . ' 2>&1');
-            $success = 'Upload processed. Output: ' . htmlspecialchars($output);
-        }
-    }
-}
-
-include __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
+require_admin();
+require_once __DIR__ . '/../includes/db.php';
 ?>
-<h3>Retriever / Upload</h3>
-<p class="text-muted">MangaDex example ID: <code>15c2a63b-b48a-4580-88dc-1224f071f91d</code> (One Punch-Man). Use English language.</p>
-<?php if ($success): ?><div class="alert alert-success"><?php echo $success; ?></div><?php endif; ?>
-<?php if ($error): ?><div class="alert alert-danger"><?php echo $error; ?></div><?php endif; ?>
 <div class="row g-3">
   <div class="col-12 col-lg-6">
-    <div class="card">
-      <div class="card-body">
-        <h5>MangaDex Import</h5>
-        <form method="post">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <input type="hidden" name="mode" value="mangadex">
-          <div class="mb-3">
-            <label class="form-label">MangaDex ID</label>
-            <input class="form-control" name="mangadex_id" placeholder="UUID" required>
-          </div>
-          <div class="mb-3">
+    <div class="cm-card p-3 h-100">
+      <h1 class="h6 mb-2">Import from MangaDex</h1>
+      <form method="post" action="<?php echo e(base_url('manga_retriever.php')); ?>">
+        <input type="hidden" name="mode" value="mangadex">
+        <div class="mb-2">
+          <label class="form-label">Search Query (optional)</label>
+          <input class="form-control" name="query" placeholder="e.g., One Piece">
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
             <label class="form-label">Language</label>
-            <select class="form-select" name="language">
-              <option value="en">English</option>
-            </select>
+            <input class="form-control" name="lang" value="<?php echo e(IMPORT_LANGUAGE); ?>">
           </div>
-          <button class="btn btn-primary" type="submit">Fetch</button>
-        </form>
-      </div>
+          <div class="col-6">
+            <label class="form-label">Limit</label>
+            <input type="number" min="1" max="50" class="form-control" name="limit" value="<?php echo (int)IMPORT_LIMIT_PER_RUN; ?>">
+          </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-gradient" type="submit">Run Import</button>
+        </div>
+      </form>
     </div>
   </div>
   <div class="col-12 col-lg-6">
-    <div class="card">
-      <div class="card-body">
-        <h5>Local ZIP Upload</h5>
-        <form method="post" enctype="multipart/form-data">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <input type="hidden" name="mode" value="upload">
-          <div class="mb-3">
-            <label class="form-label">ZIP File</label>
-            <input class="form-control" type="file" name="zip" accept=".zip" required>
-          </div>
-          <button class="btn btn-primary" type="submit">Process Upload</button>
-        </form>
-        <p class="small text-muted mt-2">ZIP structure: <code>manga_title/chap_1/*.jpg</code>, <code>manga_title/chap_2/*.png</code>, etc.</p>
-      </div>
+    <div class="cm-card p-3 h-100">
+      <h1 class="h6 mb-2">Local ZIP Upload</h1>
+      <form method="post" action="<?php echo e(base_url('manga_retriever.php')); ?>" enctype="multipart/form-data">
+        <input type="hidden" name="mode" value="zip">
+        <div class="mb-2">
+          <label class="form-label">Select Manga</label>
+          <select class="form-select" name="manga_id" required>
+            <option value="">Choose...</option>
+            <?php foreach (db_query('SELECT id, title FROM mangas ORDER BY title')->fetchAll() as $m): ?>
+              <option value="<?php echo (int)$m['id']; ?>"><?php echo e($m['title']); ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">ZIP File (images only)</label>
+          <input type="file" class="form-control" name="zip" accept="application/zip" required>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-gradient" type="submit">Upload & Import</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

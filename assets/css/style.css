@@ -1,0 +1,60 @@
+/* CrypyedManga Theme - Modern Anime x Tech */
+:root {
+  --cm-bg: #0b0f17;
+  --cm-surface: #0f1522;
+  --cm-text: #e5e9f0;
+  --cm-muted: #8a93a6;
+  --cm-primary: #6ee7ff;
+  --cm-accent: #ff6df0;
+  --cm-gradient: linear-gradient(90deg, #6ee7ff, #8b5cf6, #ff6df0);
+}
+
+html, body { background: var(--cm-bg); color: var(--cm-text); }
+.cm-body { background: radial-gradient(1000px 500px at 100% -20%, rgba(142,68,173,0.15), transparent 60%), radial-gradient(800px 400px at 0% 120%, rgba(0,255,255,0.12), transparent 60%), var(--cm-bg); }
+
+.cm-navbar { background: rgba(11, 15, 23, 0.7); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.navbar-brand .text-gradient { background: var(--cm-gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.cm-hero { border-radius: 16px; background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+
+.cm-card { background: var(--cm-surface); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.cm-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-color: rgba(110,231,255,0.35); }
+.cm-card .badge { border: 1px solid rgba(255,255,255,0.12); }
+
+.btn-gradient { color: #0c0f16; background: var(--cm-gradient); border: none; }
+.btn-outline-info { border-color: rgba(110,231,255,0.45) !important; color: #9beefd !important; }
+.btn-outline-info:hover { background: rgba(110,231,255,0.12) !important; }
+
+.text-muted { color: var(--cm-muted) !important; }
+
+.cm-footer { background: rgba(255,255,255,0.03); border-top: 1px solid rgba(255,255,255,0.06); }
+
+/* Reader */
+.reader-container { max-width: 920px; margin: 0 auto; }
+.reader-toolbar { position: sticky; top: 56px; z-index: 1030; background: rgba(15,21,34,0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; }
+.reader-image { width: 100%; height: auto; display: block; margin: 0 auto 1rem; border-radius: 8px; background: #0a0e15; border: 1px solid rgba(255,255,255,0.06); }
+
+.reading-light .reader-toolbar { background: rgba(255,255,255,0.9); color: #111; }
+.reading-light .reader-image { background: #fff; border-color: rgba(0,0,0,0.08); }
+
+/* Carousel */
+.carousel-item img { object-fit: cover; height: 420px; filter: saturate(1.05) contrast(1.05); }
+
+/* Tags */
+.cm-tag { background: rgba(139, 92, 246, 0.15); color: #c7b7ff; border: 1px solid rgba(139,92,246,0.35); padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+
+/* Forms */
+.form-control, .form-select { background: rgba(255,255,255,0.03); color: var(--cm-text); border: 1px solid rgba(255,255,255,0.12); }
+.form-control:focus, .form-select:focus { background: rgba(255,255,255,0.06); color: var(--cm-text); border-color: #6ee7ff; box-shadow: 0 0 0 .2rem rgba(110,231,255,0.15); }
+
+/* Cards grid */
+.manga-cover { aspect-ratio: 3 / 4; width: 100%; object-fit: cover; border-bottom: 1px solid rgba(255,255,255,0.08); }
+
+/* Utilities */
+.glow { box-shadow: 0 0 24px rgba(110,231,255,0.35); }
+.border-glow { border-color: rgba(110,231,255,0.35) !important; }
+
+/* Responsive tweaks */
+@media (max-width: 576px) {
+  .carousel-item img { height: 300px; }
+}

@@ -1,16 +1,6 @@
-<?php
-require_once __DIR__ . '/includes/functions.php';
-$pageTitle = 'About';
-include __DIR__ . '/includes/header.php';
-?>
-<div class="row">
-  <div class="col-12 col-lg-8">
-    <div class="card">
-      <div class="card-body">
-        <h3>About</h3>
-        <p>MangaReader is a demo platform to browse, read, and manage manga with a mobile-friendly reader, built on PHP and Bootstrap.</p>
-      </div>
-    </div>
-  </div>
+<?php require_once __DIR__ . '/includes/header.php'; ?>
+<div class="cm-card p-4">
+  <h1 class="h4 mb-3">About CrypyedManga</h1>
+  <p>CrypyedManga is a modern, anime-tech themed manga reader built with PHP and Bootstrap 5. Enjoy a sleek, mobile-friendly reading experience with bookmarks, history, and more. Admins can import from MangaDex or upload chapters locally.</p>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

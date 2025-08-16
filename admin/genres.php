@@ -1,87 +1,73 @@
 <?php
-require_once __DIR__ . '/includes/admin_auth.php';
-$action = $_GET['action'] ?? 'list';
+require_once __DIR__ . '/../includes/header.php';
+require_admin();
+require_once __DIR__ . '/../includes/db.php';
 
-if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $name = trim($_POST['name']);
-    $slug = slugify($name);
-    db()->prepare('INSERT INTO genres (name, slug) VALUES (:n,:s)')->execute([':n'=>$name, ':s'=>$slug]);
-    header('Location: genres.php');
-    exit;
+// Genres
+if (isset($_POST['new_genre'])) {
+    if (!verify_csrf($_POST['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/genres.php')); }
+    $name = trim($_POST['new_genre']);
+    if ($name) { db_query('INSERT INTO genres (name) VALUES (:n) ON DUPLICATE KEY UPDATE name=VALUES(name)', [':n'=>$name]); }
+    redirect(base_url('admin/genres.php'));
+}
+if (isset($_GET['del_genre'])) {
+    if (!verify_csrf($_GET['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/genres.php')); }
+    db_query('DELETE FROM genres WHERE id=:id', [':id'=>(int)$_GET['del_genre']]);
+    redirect(base_url('admin/genres.php'));
 }
 
-if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $id = (int)$_GET['id'];
-    $name = trim($_POST['name']);
-    $slug = slugify($name);
-    db()->prepare('UPDATE genres SET name=:n, slug=:s WHERE id=:id')->execute([':n'=>$name, ':s'=>$slug, ':id'=>$id]);
-    header('Location: genres.php');
-    exit;
+// Authors
+if (isset($_POST['new_author'])) {
+    if (!verify_csrf($_POST['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/genres.php')); }
+    $name = trim($_POST['new_author']);
+    if ($name) { db_query('INSERT INTO authors (name) VALUES (:n) ON DUPLICATE KEY UPDATE name=VALUES(name)', [':n'=>$name]); }
+    redirect(base_url('admin/genres.php'));
+}
+if (isset($_GET['del_author'])) {
+    if (!verify_csrf($_GET['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/genres.php')); }
+    db_query('DELETE FROM authors WHERE id=:id', [':id'=>(int)$_GET['del_author']]);
+    redirect(base_url('admin/genres.php'));
 }
 
-if ($action === 'delete' && isset($_GET['id'])) {
-    $id = (int)$_GET['id'];
-    db()->prepare('DELETE FROM manga_genres WHERE genre_id=:id')->execute([':id'=>$id]);
-    db()->prepare('DELETE FROM genres WHERE id=:id')->execute([':id'=>$id]);
-    header('Location: genres.php');
-    exit;
-}
-
-include __DIR__ . '/includes/header.php';
-$rows = db()->query('SELECT * FROM genres ORDER BY name ASC')->fetchAll();
+$genres = db_query('SELECT * FROM genres ORDER BY name')->fetchAll();
+$authors = db_query('SELECT * FROM authors ORDER BY name')->fetchAll();
 ?>
-<div class="row">
-  <div class="col-12 col-lg-5">
-    <div class="card mb-3">
-      <div class="card-body">
-        <h5>Add Genre</h5>
-        <form method="post" action="?action=create">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <div class="input-group">
-            <input class="form-control" name="name" placeholder="Genre Name" required>
-            <button class="btn btn-primary" type="submit">Add</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-body">
-        <h5>Genres</h5>
-        <div class="list-group">
-          <?php foreach ($rows as $g): ?>
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong><?php echo htmlspecialchars($g['name']); ?></strong>
-                <div class="small text-muted"><?php echo htmlspecialchars($g['slug']); ?></div>
-              </div>
-              <div>
-                <a class="btn btn-sm btn-warning" href="?action=edit_form&id=<?php echo (int)$g['id']; ?>">Edit</a>
-                <a class="btn btn-sm btn-danger" href="?action=delete&id=<?php echo (int)$g['id']; ?>" onclick="return confirm('Delete this genre?')">Delete</a>
-              </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <div class="cm-card p-3">
+      <h1 class="h6">Genres</h1>
+      <form class="d-flex gap-2 mb-3" method="post">
+        <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+        <input class="form-control" name="new_genre" placeholder="Add genre">
+        <button class="btn btn-gradient btn-sm" type="submit">Add</button>
+      </form>
+      <ul class="list-group list-group-flush">
+        <?php foreach ($genres as $g): ?>
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span><?php echo e($g['name']); ?></span>
+            <a class="btn btn-sm btn-outline-danger" href="?del_genre=<?php echo (int)$g['id']; ?>&csrf=<?php echo e(csrf_token()); ?>" onclick="return confirm('Delete this genre?')">Delete</a>
+          </li>
+        <?php endforeach; ?>
+      </ul>
     </div>
   </div>
-  <div class="col-12 col-lg-7">
-    <?php if ($action === 'edit_form' && isset($_GET['id'])): $id = (int)$_GET['id']; $g = db()->prepare('SELECT * FROM genres WHERE id=:id'); $g->execute([':id'=>$id]); $g=$g->fetch(); ?>
-    <div class="card">
-      <div class="card-body">
-        <h5>Edit Genre</h5>
-        <form method="post" action="?action=edit&id=<?php echo $id; ?>">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <div class="mb-3">
-            <label class="form-label">Name</label>
-            <input class="form-control" name="name" value="<?php echo htmlspecialchars($g['name']); ?>" required>
-          </div>
-          <button class="btn btn-primary" type="submit">Save</button>
-        </form>
-      </div>
+  <div class="col-12 col-lg-6">
+    <div class="cm-card p-3">
+      <h1 class="h6">Authors</h1>
+      <form class="d-flex gap-2 mb-3" method="post">
+        <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+        <input class="form-control" name="new_author" placeholder="Add author">
+        <button class="btn btn-gradient btn-sm" type="submit">Add</button>
+      </form>
+      <ul class="list-group list-group-flush">
+        <?php foreach ($authors as $a): ?>
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span><?php echo e($a['name']); ?></span>
+            <a class="btn btn-sm btn-outline-danger" href="?del_author=<?php echo (int)$a['id']; ?>&csrf=<?php echo e(csrf_token()); ?>" onclick="return confirm('Delete this author?')">Delete</a>
+          </li>
+        <?php endforeach; ?>
+      </ul>
     </div>
-    <?php endif; ?>
   </div>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

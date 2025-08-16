@@ -1,53 +1,58 @@
 <?php
-require_once __DIR__ . '/includes/admin_auth.php';
-$action = $_GET['action'] ?? 'list';
+require_once __DIR__ . '/../includes/header.php';
+require_admin();
+require_once __DIR__ . '/../includes/db.php';
 
-if ($action === 'reply' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $id = (int)$_GET['id'];
-    $msg = db()->prepare('SELECT * FROM messages WHERE id=:id');
-    $msg->execute([':id'=>$id]);
-    $row = $msg->fetch();
-    if ($row) {
-        $reply = trim($_POST['reply']);
-        send_mail($row['email'], 'Re: Your message to ' . SITE_NAME, $reply);
-        db()->prepare('UPDATE messages SET is_replied=1 WHERE id=:id')->execute([':id'=>$id]);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reply_id'])) {
+    if (!verify_csrf($_POST['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/messages.php')); }
+    $id = (int)$_POST['reply_id'];
+    $reply = trim($_POST['reply_text'] ?? '');
+    if ($reply) {
+        db_query('UPDATE messages SET status=\'replied\', reply_text=:r, replied_at=NOW() WHERE id=:id', [':r'=>$reply, ':id'=>$id]);
+        $msg = db_query('SELECT email, subject FROM messages WHERE id=:id', [':id'=>$id])->fetch();
+        if ($msg) { @mail($msg['email'], '['.SITE_NAME.'] Re: '.$msg['subject'], $reply); }
+        $_SESSION['flash']=['type'=>'success','msg'=>'Reply sent'];
     }
-    header('Location: messages.php'); exit;
+    redirect(base_url('admin/messages.php'));
 }
 
-include __DIR__ . '/includes/header.php';
-$rows = db()->query('SELECT * FROM messages ORDER BY created_at DESC')->fetchAll();
+$rows = db_query('SELECT * FROM messages ORDER BY created_at DESC')->fetchAll();
 ?>
-<h3>Messages</h3>
-<div class="table-responsive">
-<table class="table table-dark table-striped align-middle">
-  <thead><tr><th>Name</th><th>Email</th><th>Message</th><th>Date</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-  <?php foreach ($rows as $m): ?>
-    <tr>
-      <td><?php echo htmlspecialchars($m['name']); ?></td>
-      <td><?php echo htmlspecialchars($m['email']); ?></td>
-      <td style="max-width: 420px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;"><?php echo htmlspecialchars($m['message']); ?></td>
-      <td><?php echo htmlspecialchars($m['created_at']); ?></td>
-      <td><?php echo $m['is_replied'] ? 'Replied' : 'Pending'; ?></td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#r<?php echo (int)$m['id']; ?>">Reply</button>
-      </td>
-    </tr>
-    <tr class="collapse" id="r<?php echo (int)$m['id']; ?>">
-      <td colspan="6">
-        <form method="post" action="?action=reply&id=<?php echo (int)$m['id']; ?>">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <div class="input-group">
-            <textarea class="form-control" name="reply" rows="3" placeholder="Write a reply..."></textarea>
-            <button class="btn btn-success" type="submit">Send</button>
+<div class="cm-card p-3">
+  <h1 class="h5 mb-3">Messages</h1>
+  <div class="list-group list-group-flush">
+    <?php foreach ($rows as $m): ?>
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="fw-semibold"><?php echo e($m['subject']); ?></div>
+            <div class="text-muted small mb-2"><?php echo e($m['name']); ?> • <?php echo e($m['email']); ?> • <?php echo e($m['created_at']); ?></div>
+            <div class="mb-2"><?php echo nl2br(e($m['message'])); ?></div>
+            <?php if ($m['status'] === 'replied'): ?>
+              <div class="border rounded p-2 bg-dark-subtle small">Admin Reply: <?php echo nl2br(e($m['reply_text'])); ?></div>
+            <?php endif; ?>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-<?php echo $m['status']==='replied'?'success':'secondary'; ?>"><?php echo e($m['status']); ?></span>
+          </div>
+        </div>
+        <?php if ($m['status'] !== 'replied'): ?>
+        <form class="mt-2" method="post">
+          <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+          <input type="hidden" name="reply_id" value="<?php echo (int)$m['id']; ?>">
+          <div class="row g-2">
+            <div class="col-12">
+              <textarea class="form-control" rows="2" name="reply_text" placeholder="Write a reply..."></textarea>
+            </div>
+            <div class="col-12 text-end">
+              <button class="btn btn-sm btn-gradient">Send Reply</button>
+            </div>
           </div>
         </form>
-      </td>
-    </tr>
-  <?php endforeach; ?>
-  </tbody>
-</table>
+        <?php endif; ?>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$rows): ?><div class="list-group-item">No messages.</div><?php endif; ?>
+  </div>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
