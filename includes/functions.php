@@ -1,17 +1,119 @@
 <?php
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/config.php';
 
-function slugify(string $text): string {
-    $text = preg_replace('~[\p{Pd}\s]+~u', '-', $text);
-    $text = iconv('UTF-8', 'ASCII//TRANSLIT', $text);
-    $text = preg_replace('~[^-\w]+~', '', $text);
-    $text = trim($text, '-');
-    $text = preg_replace('~-+~', '-', $text);
-    $text = strtolower($text);
-    return $text ?: 'n-a';
+function base_url(string $path = ''): string {
+    $base = BASE_URL;
+    if (!$base) {
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '/') ?: '/';
+        $base = rtrim($protocol . $host . $scriptName, '/');
+    }
+    $path = ltrim($path, '/');
+    return $path ? $base . '/' . $path : $base;
 }
 
-function send_mail(string $to, string $subject, string $message, string $from = MAIL_FROM): bool {
+function e(?string $str): string {
+    return htmlspecialchars($str ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function slugify(string $text): string {
+    $text = trim($text);
+    $text = iconv('UTF-8', 'ASCII//TRANSLIT', $text);
+    $text = preg_replace('~[^\pL\d]+~u', '-', $text);
+    $text = trim($text, '-');
+    $text = strtolower($text);
+    $text = preg_replace('~[^-a-z0-9]+~', '', $text);
+    return $text ?: uniqid('manga-', true);
+}
+
+function redirect(string $url): void {
+    header('Location: ' . $url);
+    exit;
+}
+
+function current_user(): ?array {
+    return $_SESSION['user'] ?? null;
+}
+
+function is_logged_in(): bool {
+    return isset($_SESSION['user']);
+}
+
+function is_admin(): bool {
+    return !empty($_SESSION['user']['is_admin']);
+}
+
+function require_login(): void {
+    if (!is_logged_in()) {
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Please login to continue.'];
+        redirect(base_url('login.php'));
+    }
+}
+
+function require_admin(): void {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo 'Forbidden';
+        exit;
+    }
+}
+
+function csrf_token(): string {
+    if (empty($_SESSION['csrf'])) {
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf'];
+}
+
+function verify_csrf(string $token): bool {
+    return isset($_SESSION['csrf']) && hash_equals($_SESSION['csrf'], $token);
+}
+
+function ensure_dir(string $path): void {
+    if (!is_dir($path)) {
+        mkdir($path, 0775, true);
+    }
+}
+
+function save_uploaded_file(array $file, string $destDir, array $allowedMime = ['image/jpeg','image/png','image/webp','image/svg+xml']): ?string {
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($file['tmp_name']);
+    if (!in_array($mime, $allowedMime, true)) {
+        return null;
+    }
+    ensure_dir($destDir);
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'bin';
+    $name = uniqid('img_', true) . '.' . strtolower($ext);
+    $destPath = rtrim($destDir, '/').'/'.$name;
+    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+        return null;
+    }
+    return $destPath;
+}
+
+function paginate(int $total, int $perPage, int $page, string $basePath, array $query = []): string {
+    $pages = (int)ceil(max(1, $total) / max(1, $perPage));
+    if ($pages <= 1) return '';
+    $html = '<nav aria-label="Page navigation"><ul class="pagination justify-content-center">';
+    $queryStr = function(array $q) { return http_build_query($q); };
+    for ($i = 1; $i <= $pages; $i++) {
+        $active = $i === $page ? ' active' : '';
+        $query['page'] = $i;
+        $href = e($basePath . '?' . $queryStr($query));
+        $html .= '<li class="page-item'.$active.'"><a class="page-link" href="'.$href.'">'.$i.'</a></li>';
+    }
+    $html .= '</ul></nav>';
+    return $html;
+}
+
+function seo_url_manga(string $slug): string { return base_url('manga/' . $slug); }
+function seo_url_chapter(string $mangaSlug, string $chapterNumber): string { return base_url('chapter/' . $mangaSlug . '/' . rawurlencode($chapterNumber)); }
+
+function send_mail(string $to, string $subject, string $message, string $from = SMTP_FROM): bool {
     $headers = 'From: ' . $from . "\r\n" . 'Reply-To: ' . $from . "\r\n" . 'Content-Type: text/plain; charset=UTF-8';
     return mail($to, $subject, $message, $headers);
 }
@@ -96,27 +198,24 @@ function get_chapter_images(int $chapterId): array {
 }
 
 function toggle_bookmark(int $userId, int $mangaId): bool {
-    $check = db()->prepare('SELECT 1 FROM bookmarks WHERE user_id = :uid AND manga_id = :mid');
-    $check->execute([':uid' => $userId, ':mid' => $mangaId]);
-    if ($check->fetch()) {
-        $del = db()->prepare('DELETE FROM bookmarks WHERE user_id = :uid AND manga_id = :mid');
-        $del->execute([':uid' => $userId, ':mid' => $mangaId]);
-        return false; // removed
+    $check = db_query('SELECT 1 FROM bookmarks WHERE user_id = :uid AND manga_id = :mid', [':uid'=>$userId, ':mid'=>$mangaId])->fetch();
+    if ($check) {
+        db_query('DELETE FROM bookmarks WHERE user_id = :uid AND manga_id = :mid', [':uid'=>$userId, ':mid'=>$mangaId]);
+        return false;
     }
-    $ins = db()->prepare('INSERT INTO bookmarks (user_id, manga_id, created_at) VALUES (:uid, :mid, NOW())');
-    $ins->execute([':uid' => $userId, ':mid' => $mangaId]);
-    return true; // added
+    db_query('INSERT INTO bookmarks (user_id, manga_id) VALUES (:uid, :mid)', [':uid'=>$userId, ':mid'=>$mangaId]);
+    return true;
 }
 
 function is_bookmarked(int $userId, int $mangaId): bool {
-    $stmt = db()->prepare('SELECT 1 FROM bookmarks WHERE user_id = :uid AND manga_id = :mid');
-    $stmt->execute([':uid' => $userId, ':mid' => $mangaId]);
-    return (bool)$stmt->fetch();
+    $row = db_query('SELECT 1 FROM bookmarks WHERE user_id = :uid AND manga_id = :mid', [':uid'=>$userId, ':mid'=>$mangaId])->fetch();
+    return (bool)$row;
 }
 
 function add_reading_history(int $userId, int $mangaId, int $chapterId): void {
-    $stmt = db()->prepare('INSERT INTO reading_history (user_id, manga_id, chapter_id, last_read_at) VALUES (:uid, :mid, :cid, NOW()) ON DUPLICATE KEY UPDATE chapter_id = VALUES(chapter_id), last_read_at = VALUES(last_read_at)');
-    $stmt->execute([':uid' => $userId, ':mid' => $mangaId, ':cid' => $chapterId]);
+    db_query('INSERT INTO reading_history (user_id, manga_id, chapter_id, last_page) VALUES (:uid,:mid,:cid,0) ON DUPLICATE KEY UPDATE chapter_id = VALUES(chapter_id), updated_at = CURRENT_TIMESTAMP', [
+        ':uid'=>$userId, ':mid'=>$mangaId, ':cid'=>$chapterId
+    ]);
 }
 
 function find_user_by_email(string $email): ?array {
@@ -136,19 +235,6 @@ function create_user(string $name, string $email, string $password, string $role
 function page_param(): int {
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     return max(1, $page);
-}
-
-function paginate(int $totalItems, int $perPage, int $currentPage): array {
-    $totalPages = (int)ceil($totalItems / $perPage);
-    $currentPage = max(1, min($currentPage, $totalPages ?: 1));
-    $offset = ($currentPage - 1) * $perPage;
-    return [
-        'total' => $totalItems,
-        'pages' => $totalPages,
-        'page' => $currentPage,
-        'perPage' => $perPage,
-        'offset' => $offset,
-    ];
 }
 
 function fetch_manga_list(array $filters, int $perPage, int $page): array {
@@ -182,15 +268,15 @@ function fetch_manga_list(array $filters, int $perPage, int $page): array {
     $stmt->execute($params);
     $total = (int)$stmt->fetchColumn();
 
-    $pager = paginate($total, $perPage, $page);
+    $pager = paginate($total, $perPage, $page, base_url('manga/'));
 
     $sql = 'SELECT m.* FROM mangas m ' . $whereSql . ' ' . $order . ' LIMIT :lim OFFSET :off';
     $stmt = db()->prepare($sql);
     foreach ($params as $k => $v) {
         $stmt->bindValue($k, $v);
     }
-    $stmt->bindValue(':lim', $pager['perPage'], PDO::PARAM_INT);
-    $stmt->bindValue(':off', $pager['offset'], PDO::PARAM_INT);
+    $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':off', ($page - 1) * $perPage, PDO::PARAM_INT);
     $stmt->execute();
     $rows = $stmt->fetchAll();
     return [$rows, $pager];
@@ -208,4 +294,7 @@ function create_or_get_genre(string $name): int {
     $stmt->execute([':name' => $name, ':slug' => $slug]);
     return (int)db()->lastInsertId();
 }
+
+function db(): PDO { return getPDO(); }
+function verify_csrf_token(string $t): bool { return verify_csrf($t); }
 ?>

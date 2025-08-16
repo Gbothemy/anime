@@ -1,23 +1,20 @@
 <?php
-require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/db.php';
 require_login();
-$pageTitle = 'Reading History';
-$uid = current_user()['id'];
-$sql = 'SELECT rh.*, m.title, m.slug, c.chapter_number FROM reading_history rh JOIN mangas m ON m.id = rh.manga_id JOIN chapters c ON c.id = rh.chapter_id WHERE rh.user_id = :uid ORDER BY rh.last_read_at DESC';
-$stmt = db()->prepare($sql);
-$stmt->execute([':uid' => $uid]);
-$rows = $stmt->fetchAll();
-include __DIR__ . '/includes/header.php';
+
+$userId = (int)current_user()['id'];
+$sql = 'SELECT rh.*, m.title AS manga_title, m.slug AS manga_slug, c.chapter_number FROM reading_history rh JOIN mangas m ON m.id=rh.manga_id JOIN chapters c ON c.id=rh.chapter_id WHERE rh.user_id=:u ORDER BY rh.updated_at DESC LIMIT 100';
+$rows = db_query($sql, [':u'=>$userId])->fetchAll();
 ?>
-<h3>Reading History</h3>
+<h1 class="h5 mb-3">Reading History</h1>
 <div class="list-group">
-<?php foreach ($rows as $r): ?>
-  <a class="list-group-item list-group-item-action" href="read.php?manga=<?php echo urlencode($r['slug']); ?>&chapter=<?php echo urlencode($r['chapter_number']); ?>">
-    <div class="d-flex w-100 justify-content-between">
-      <h5 class="mb-1"><?php echo htmlspecialchars($r['title']); ?> — Chapter <?php echo htmlspecialchars($r['chapter_number']); ?></h5>
-      <small class="text-muted"><?php echo htmlspecialchars($r['last_read_at']); ?></small>
-    </div>
-  </a>
-<?php endforeach; ?>
+  <?php foreach ($rows as $r): ?>
+    <a class="list-group-item list-group-item-action d-flex justify-content-between" href="<?php echo e(seo_url_chapter($r['manga_slug'], $r['chapter_number'])); ?>">
+      <span><?php echo e($r['manga_title']); ?> • Chapter <?php echo e($r['chapter_number']); ?></span>
+      <span class="text-muted small"><?php echo e(date('Y-m-d H:i', strtotime($r['updated_at']))); ?></span>
+    </a>
+  <?php endforeach; ?>
+  <?php if (!$rows): ?><div class="list-group-item">No history yet.</div><?php endif; ?>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

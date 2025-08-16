@@ -1,180 +1,119 @@
 <?php
-require_once __DIR__ . '/includes/admin_auth.php';
+require_once __DIR__ . '/../includes/header.php';
+require_admin();
+require_once __DIR__ . '/../includes/db.php';
+
 $action = $_GET['action'] ?? 'list';
 
-function save_cover_upload(array $file): ?string {
-    if (!isset($file['tmp_name']) || !$file['tmp_name']) return null;
-    $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg';
-    $name = 'cover_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . strtolower($ext);
-    $dest = UPLOADS_PATH . '/' . $name;
-    if (!move_uploaded_file($file['tmp_name'], $dest)) return null;
-    return $name;
-}
-
-$authors = db()->query('SELECT * FROM authors ORDER BY name')->fetchAll();
-
-if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $title = trim($_POST['title']);
-    $slug = slugify($title);
-    $author = trim($_POST['author']);
-    $release = $_POST['release_date'] ?: null;
-    $desc = trim($_POST['description']);
-    $featured = isset($_POST['is_featured']) ? 1 : 0;
-    $cover = save_cover_upload($_FILES['cover_image'] ?? []) ?? '';
-
-    $stmt = db()->prepare('INSERT INTO mangas (title, slug, author, description, cover_image, release_date, is_featured, created_at, updated_at) VALUES (:t,:s,:a,:d,:c,:r,:f,NOW(),NOW())');
-    $stmt->execute([':t'=>$title, ':s'=>$slug, ':a'=>$author, ':d'=>$desc, ':c'=>$cover, ':r'=>$release, ':f'=>$featured]);
-    $mid = (int)db()->lastInsertId();
-
-    $genres = $_POST['genres'] ?? [];
-    $mg = db()->prepare('INSERT INTO manga_genres (manga_id, genre_id) VALUES (:m,:g)');
-    foreach ($genres as $gid) { $mg->execute([':m'=>$mid, ':g'=>(int)$gid]); }
-
-    header('Location: mangas.php');
-    exit;
-}
-
-if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) die('Invalid CSRF');
-    $id = (int)$_GET['id'];
-    $title = trim($_POST['title']);
-    $slug = slugify($title);
-    $author = trim($_POST['author']);
-    $release = $_POST['release_date'] ?: null;
-    $desc = trim($_POST['description']);
-    $featured = isset($_POST['is_featured']) ? 1 : 0;
-    $cover = save_cover_upload($_FILES['cover_image'] ?? []);
-
-    if ($cover) {
-        $stmt = db()->prepare('UPDATE mangas SET title=:t, slug=:s, author=:a, description=:d, cover_image=:c, release_date=:r, is_featured=:f, updated_at=NOW() WHERE id=:id');
-        $stmt->execute([':t'=>$title, ':s'=>$slug, ':a'=>$author, ':d'=>$desc, ':c'=>$cover, ':r'=>$release, ':f'=>$featured, ':id'=>$id]);
-    } else {
-        $stmt = db()->prepare('UPDATE mangas SET title=:t, slug=:s, author=:a, description=:d, release_date=:r, is_featured=:f, updated_at=NOW() WHERE id=:id');
-        $stmt->execute([':t'=>$title, ':s'=>$slug, ':a'=>$author, ':d'=>$desc, ':r'=>$release, ':f'=>$featured, ':id'=>$id]);
-    }
-
-    db()->prepare('DELETE FROM manga_genres WHERE manga_id = :id')->execute([':id'=>$id]);
-    $genres = $_POST['genres'] ?? [];
-    $mg = db()->prepare('INSERT INTO manga_genres (manga_id, genre_id) VALUES (:m,:g)');
-    foreach ($genres as $gid) { $mg->execute([':m'=>$id, ':g'=>(int)$gid]); }
-
-    header('Location: mangas.php');
-    exit;
-}
-
 if ($action === 'delete' && isset($_GET['id'])) {
-    $id = (int)$_GET['id'];
-    db()->prepare('DELETE FROM manga_genres WHERE manga_id=:id')->execute([':id'=>$id]);
-    db()->prepare('DELETE FROM chapters WHERE manga_id=:id')->execute([':id'=>$id]);
-    db()->prepare('DELETE FROM bookmarks WHERE manga_id=:id')->execute([':id'=>$id]);
-    db()->prepare('DELETE FROM mangas WHERE id=:id')->execute([':id'=>$id]);
-    header('Location: mangas.php');
-    exit;
+    if (!verify_csrf($_GET['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/mangas.php')); }
+    db_query('DELETE FROM mangas WHERE id=:id', [':id'=>(int)$_GET['id']]);
+    $_SESSION['flash']=['type'=>'success','msg'=>'Manga deleted'];
+    redirect(base_url('admin/mangas.php'));
 }
 
-include __DIR__ . '/includes/header.php';
-$genres = get_genres();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf($_POST['csrf'] ?? '')) { $_SESSION['flash']=['type'=>'danger','msg'=>'Invalid CSRF']; redirect(base_url('admin/mangas.php')); }
+    $id = (int)($_POST['id'] ?? 0);
+    $title = trim($_POST['title'] ?? '');
+    $slug = trim($_POST['slug'] ?? slugify($title));
+    $authorName = trim($_POST['author'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $release = $_POST['release_date'] ?? null;
+    if ($authorName) {
+        $author = db_query('SELECT id FROM authors WHERE name=:n', [':n'=>$authorName])->fetch();
+        if (!$author) { db_query('INSERT INTO authors (name) VALUES (:n)', [':n'=>$authorName]); $authorId = (int)db_last_insert_id(); }
+        else { $authorId = (int)$author['id']; }
+    } else { $authorId = null; }
 
-if ($action === 'new' || $action === 'edit') {
-    $editing = $action === 'edit';
-    $manga = [ 'title'=>'', 'author'=>'', 'description'=>'', 'cover_image'=>'', 'release_date'=>'', 'is_featured'=>0 ];
-    $selected = [];
-    if ($editing) {
-        $id = (int)$_GET['id'];
-        $stmt = db()->prepare('SELECT * FROM mangas WHERE id=:id');
-        $stmt->execute([':id'=>$id]);
-        $manga = $stmt->fetch();
-        $gs = db()->prepare('SELECT genre_id FROM manga_genres WHERE manga_id=:id');
-        $gs->execute([':id'=>$id]);
-        $selected = array_column($gs->fetchAll(), 'genre_id');
+    $coverPath = null;
+    if (!empty($_FILES['cover']['name'])) {
+        $cover = save_uploaded_file($_FILES['cover'], __DIR__ . '/../uploads/mangas', ['image/jpeg','image/png','image/webp','image/svg+xml']);
+        if ($cover) { $coverPath = 'uploads/mangas/' . basename($cover); }
     }
+
+    if ($id > 0) {
+        db_query('UPDATE mangas SET title=:t, slug=:s, author_id=:a, description=:d, release_date=:r' . ($coverPath?', cover_image=:c':'') . ' WHERE id=:id', [
+            ':t'=>$title, ':s'=>$slug, ':a'=>$authorId, ':d'=>$description, ':r'=>$release, ':id'=>$id
+        ] + ($coverPath?[':c'=>$coverPath]:[]));
+        $_SESSION['flash']=['type'=>'success','msg'=>'Manga updated'];
+    } else {
+        db_query('INSERT INTO mangas (title, slug, author_id, description, release_date, cover_image) VALUES (:t,:s,:a,:d,:r,:c)', [
+            ':t'=>$title, ':s'=>$slug, ':a'=>$authorId, ':d'=>$description, ':r'=>$release, ':c'=>$coverPath ?: 'uploads/mangas/placeholder.svg'
+        ]);
+        $_SESSION['flash']=['type'=>'success','msg'=>'Manga created'];
+    }
+    redirect(base_url('admin/mangas.php'));
+}
+
+$editing = null;
+if ($action === 'edit' && isset($_GET['id'])) {
+    $editing = db_query('SELECT * FROM mangas WHERE id=:id', [':id'=>(int)$_GET['id']])->fetch();
+}
+
+$rows = db_query('SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN authors a ON a.id=m.author_id ORDER BY m.updated_at DESC')->fetchAll();
 ?>
-<div class="card">
-  <div class="card-body">
-    <h3><?php echo $editing ? 'Edit Manga' : 'New Manga'; ?></h3>
-    <form method="post" enctype="multipart/form-data" action="?action=<?php echo $editing ? 'edit&id='.(int)$manga['id'] : 'create'; ?>">
-      <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h5 mb-0">Mangas</h1>
+  <button class="btn btn-sm btn-gradient" data-bs-toggle="collapse" data-bs-target="#mangaForm">Add Manga</button>
+</div>
+<div class="collapse <?php echo $editing?'show':''; ?>" id="mangaForm">
+  <div class="cm-card p-3 mb-3">
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+      <input type="hidden" name="id" value="<?php echo e($editing['id'] ?? 0); ?>">
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label">Title</label>
-          <input class="form-control" name="title" value="<?php echo htmlspecialchars($manga['title']); ?>" required>
+          <input class="form-control" name="title" value="<?php echo e($editing['title'] ?? ''); ?>" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Slug</label>
+          <input class="form-control" name="slug" value="<?php echo e($editing['slug'] ?? ''); ?>">
         </div>
         <div class="col-md-6">
           <label class="form-label">Author</label>
-          <div class="input-group">
-            <input class="form-control" name="author" value="<?php echo htmlspecialchars($manga['author']); ?>" list="authorList" required>
-            <datalist id="authorList">
-              <?php foreach ($authors as $a): ?>
-                <option value="<?php echo htmlspecialchars($a['name']); ?>"></option>
-              <?php endforeach; ?>
-            </datalist>
-          </div>
+          <input class="form-control" name="author" value="<?php echo e($editing['author_name'] ?? ''); ?>">
         </div>
         <div class="col-md-6">
           <label class="form-label">Release Date</label>
-          <input type="date" class="form-control" name="release_date" value="<?php echo htmlspecialchars($manga['release_date']); ?>">
-        </div>
-        <div class="col-md-6 d-flex align-items-end">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="is_featured" <?php echo $manga['is_featured']? 'checked':''; ?>>
-            <label class="form-check-label">Featured</label>
-          </div>
+          <input type="date" class="form-control" name="release_date" value="<?php echo e($editing['release_date'] ?? ''); ?>">
         </div>
         <div class="col-12">
           <label class="form-label">Description</label>
-          <textarea class="form-control" rows="4" name="description"><?php echo htmlspecialchars($manga['description']); ?></textarea>
+          <textarea class="form-control" rows="4" name="description"><?php echo e($editing['description'] ?? ''); ?></textarea>
         </div>
-        <div class="col-12">
+        <div class="col-12 col-md-6">
           <label class="form-label">Cover Image</label>
-          <input type="file" class="form-control" name="cover_image" accept="image/*">
-        </div>
-        <div class="col-12">
-          <label class="form-label">Genres</label>
-          <div class="row">
-            <?php foreach ($genres as $g): ?>
-              <div class="col-6 col-md-4 col-lg-3">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" name="genres[]" value="<?php echo $g['id']; ?>" <?php echo in_array($g['id'], $selected) ? 'checked' : ''; ?>>
-                  <label class="form-check-label"><?php echo htmlspecialchars($g['name']); ?></label>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
+          <input type="file" class="form-control" name="cover" accept="image/*">
         </div>
       </div>
-      <div class="mt-3"><button class="btn btn-primary" type="submit">Save</button> <a class="btn btn-secondary" href="mangas.php">Cancel</a></div>
+      <div class="mt-3">
+        <button class="btn btn-gradient" type="submit"><?php echo $editing?'Update':'Create'; ?></button>
+      </div>
     </form>
   </div>
 </div>
-<?php
-} else {
-    $rows = db()->query('SELECT * FROM mangas ORDER BY updated_at DESC, created_at DESC')->fetchAll();
-?>
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3>Mangas</h3>
-  <a class="btn btn-primary" href="?action=new">Add Manga</a>
+
+<div class="cm-card p-0">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0 table-dark">
+      <thead><tr><th>Cover</th><th>Title</th><th>Author</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+        <?php foreach ($rows as $m): ?>
+          <tr>
+            <td><img src="<?php echo e(base_url($m['cover_image'] ?: 'uploads/mangas/placeholder.svg')); ?>" width="44" height="58" style="object-fit:cover;border-radius:4px"></td>
+            <td><a class="text-decoration-none" href="<?php echo e(seo_url_manga($m['slug'])); ?>"><?php echo e($m['title']); ?></a></td>
+            <td><?php echo e($m['author_name'] ?: '—'); ?></td>
+            <td class="text-muted small"><?php echo e($m['updated_at']); ?></td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-info" href="?action=edit&id=<?php echo (int)$m['id']; ?>">Edit</a>
+              <a class="btn btn-sm btn-outline-danger" href="?action=delete&id=<?php echo (int)$m['id']; ?>&csrf=<?php echo e(csrf_token()); ?>" onclick="return confirm('Delete this manga?')">Delete</a>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
 </div>
-<div class="table-responsive">
-<table class="table table-dark table-striped align-middle">
-  <thead><tr><th>Cover</th><th>Title</th><th>Author</th><th>Updated</th><th></th></tr></thead>
-  <tbody>
-    <?php foreach ($rows as $m): ?>
-      <tr>
-        <td style="width:64px"><img src="<?php echo UPLOADS_URL . '/' . htmlspecialchars($m['cover_image']); ?>" alt="" style="width:48px; height:64px; object-fit:cover;"></td>
-        <td><?php echo htmlspecialchars($m['title']); ?></td>
-        <td><?php echo htmlspecialchars($m['author']); ?></td>
-        <td><?php echo htmlspecialchars($m['updated_at']); ?></td>
-        <td class="text-end">
-          <a class="btn btn-sm btn-secondary" href="chapters.php?manga_id=<?php echo (int)$m['id']; ?>">Chapters</a>
-          <a class="btn btn-sm btn-warning" href="?action=edit&id=<?php echo (int)$m['id']; ?>">Edit</a>
-          <a class="btn btn-sm btn-danger" href="?action=delete&id=<?php echo (int)$m['id']; ?>" onclick="return confirm('Delete this manga?')">Delete</a>
-        </td>
-      </tr>
-    <?php endforeach; ?>
-  </tbody>
-</table>
-</div>
-<?php }
-include __DIR__ . '/includes/footer.php';
-?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

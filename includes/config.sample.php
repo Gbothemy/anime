@@ -1,6 +1,6 @@
 <?php
-// CrypyedManga - Configuration
-// Adjust these values for your environment.
+// CrypyedManga - Sample Configuration
+// Copy this file to config.php and fill in your credentials.
 
 // Database
 define('DB_HOST', '127.0.0.1');
@@ -38,9 +38,5 @@ define('APP_TIMEZONE', 'UTC');
 @date_default_timezone_set(APP_TIMEZONE);
 
 // Security
-// Change this to a long random string
+// Change this to a long random string in your config.php
 define('APP_SECRET', 'change-me-please-very-long-random-string');
-
-// Common constants
-define('ITEMS_PER_PAGE', 12);
-?>

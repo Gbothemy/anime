@@ -1,46 +1,41 @@
 <?php
-require_once __DIR__ . '/includes/functions.php';
-$pageTitle = 'Login';
-$error = null;
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/db.php';
+
+if (is_logged_in()) { redirect(base_url('/')); }
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email'] ?? '');
+    if (!verify_csrf($_POST['csrf'] ?? '')) { $_SESSION['flash'] = ['type'=>'danger','msg'=>'Invalid CSRF.']; redirect(base_url('login')); }
+    $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    $token = $_POST['csrf_token'] ?? '';
-    if (!verify_csrf_token($token)) {
-        $error = 'Invalid CSRF token.';
-    } else {
-        $user = find_user_by_email($email);
-        if ($user && password_verify($password, $user['password_hash'])) {
-            login_user($user);
-            header('Location: ' . BASE_URL);
-            exit;
-        } else {
-            $error = 'Invalid email or password.';
-        }
+    $user = db_query('SELECT * FROM users WHERE username=:u OR email=:u LIMIT 1', [':u'=>$username])->fetch();
+    if ($user && password_verify($password, $user['password_hash'])) {
+        $_SESSION['user'] = ['id'=>$user['id'], 'username'=>$user['username'], 'email'=>$user['email'], 'is_admin'=>(int)$user['is_admin']];
+        redirect(base_url('/'));
     }
+    $_SESSION['flash'] = ['type'=>'danger','msg'=>'Invalid credentials'];
+    redirect(base_url('login'));
 }
-include __DIR__ . '/includes/header.php';
 ?>
 <div class="row justify-content-center">
   <div class="col-12 col-md-6 col-lg-4">
-    <div class="card">
-      <div class="card-body">
-        <h3 class="mb-3">Login</h3>
-        <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
-        <form method="post">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <div class="mb-3">
-            <label class="form-label">Email</label>
-            <input class="form-control" type="email" name="email" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Password</label>
-            <input class="form-control" type="password" name="password" required>
-          </div>
-          <button class="btn btn-primary" type="submit">Login</button>
-        </form>
-      </div>
+    <div class="cm-card p-3">
+      <h1 class="h5 mb-3">Login</h1>
+      <form method="post">
+        <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+        <div class="mb-3">
+          <label class="form-label">Username or Email</label>
+          <input class="form-control" name="username" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" class="form-control" name="password" required>
+        </div>
+        <div class="d-grid">
+          <button class="btn btn-gradient" type="submit">Sign In</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

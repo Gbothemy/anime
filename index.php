@@ -1,55 +1,50 @@
 <?php
-require_once __DIR__ . '/includes/functions.php';
-$pageTitle = 'Home';
-$featured = get_featured_mangas(6);
-$latest = get_latest_mangas(12);
-include __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/db.php';
+
+$featured = db_query("SELECT * FROM mangas ORDER BY popularity_score DESC, updated_at DESC LIMIT 5")->fetchAll();
+$latest = db_query("SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN authors a ON a.id=m.author_id ORDER BY updated_at DESC LIMIT 12")->fetchAll();
 ?>
-<?php if ($featured): ?>
-<div class="row">
-  <div class="col-12">
-    <div id="featuredCarousel" class="carousel slide mb-4" data-bs-ride="carousel">
-      <div class="carousel-inner">
-        <?php foreach ($featured as $idx => $m): ?>
-          <div class="carousel-item <?php echo $idx === 0 ? 'active' : ''; ?>">
-            <img src="<?php echo UPLOADS_URL . '/' . htmlspecialchars($m['cover_image']); ?>" class="d-block w-100" alt="<?php echo htmlspecialchars($m['title']); ?>" style="height:380px; object-fit:cover;">
-            <div class="carousel-caption d-none d-md-block">
-              <h5><?php echo htmlspecialchars($m['title']); ?></h5>
-              <p><?php echo htmlspecialchars(mb_strimwidth($m['description'], 0, 120, '…')); ?></p>
-              <a href="<?php echo url_manga($m['slug']); ?>" class="btn btn-primary">Read</a>
-            </div>
+<div class="cm-hero p-3 p-md-4 mb-4">
+  <div id="homeCarousel" class="carousel slide" data-bs-ride="carousel">
+    <div class="carousel-inner">
+      <?php foreach ($featured as $i => $m): ?>
+        <div class="carousel-item <?php echo $i === 0 ? 'active' : ''; ?>">
+          <img src="<?php echo e(base_url($m['cover_image'] ?: 'uploads/mangas/placeholder.svg')); ?>" class="d-block w-100" alt="<?php echo e($m['title']); ?>">
+          <div class="carousel-caption d-none d-md-block text-start">
+            <h5 class="fw-bold"><?php echo e($m['title']); ?></h5>
+            <p class="text-muted"><?php echo e(mb_strimwidth(strip_tags($m['description'] ?? ''), 0, 140, '…')); ?></p>
+            <a class="btn btn-gradient btn-sm glow" href="<?php echo e(seo_url_manga($m['slug'])); ?>">Read Now</a>
           </div>
-        <?php endforeach; ?>
-      </div>
-      <button class="carousel-control-prev" type="button" data-bs-target="#featuredCarousel" data-bs-slide="prev">
-        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-        <span class="visually-hidden">Previous</span>
-      </button>
-      <button class="carousel-control-next" type="button" data-bs-target="#featuredCarousel" data-bs-slide="next">
-        <span class="carousel-control-next-icon" aria-hidden="true"></span>
-        <span class="visually-hidden">Next</span>
-      </button>
+        </div>
+      <?php endforeach; ?>
     </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#homeCarousel" data-bs-slide="prev"><span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span></button>
+    <button class="carousel-control-next" type="button" data-bs-target="#homeCarousel" data-bs-slide="next"><span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span></button>
   </div>
 </div>
-<?php endif; ?>
 
-<h3 class="mb-3">Latest Updates</h3>
+<h2 class="h5 mb-3">Latest Updates</h2>
 <div class="row g-3">
   <?php foreach ($latest as $m): ?>
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card manga-card h-100">
-        <img src="<?php echo UPLOADS_URL . '/' . htmlspecialchars($m['cover_image']); ?>" class="card-img-top" alt="<?php echo htmlspecialchars($m['title']); ?>">
-        <div class="card-body d-flex flex-column">
-          <h5 class="card-title mb-1" style="min-height:2.5rem;">
-            <a class="stretched-link text-decoration-none" href="<?php echo url_manga($m['slug']); ?>"><?php echo htmlspecialchars($m['title']); ?></a>
-          </h5>
-          <div class="manga-meta mb-2">Updated: <?php echo htmlspecialchars(date('Y-m-d', strtotime($m['updated_at'] ?? $m['created_at']))); ?></div>
-          <p class="card-text"><?php echo htmlspecialchars(mb_strimwidth($m['description'], 0, 90, '…')); ?></p>
-          <div class="manga-meta">Genres: <?php echo htmlspecialchars(implode(', ', get_genres_for_manga((int)$m['id']))); ?></div>
-        </div>
+    <div class="col-6 col-md-3 col-lg-2">
+      <div class="cm-card h-100 position-relative">
+        <a href="<?php echo e(seo_url_manga($m['slug'])); ?>" class="text-decoration-none">
+          <img class="manga-cover" src="<?php echo e(base_url($m['cover_image'] ?: 'uploads/mangas/placeholder.svg')); ?>" alt="<?php echo e($m['title']); ?>">
+          <div class="p-2">
+            <div class="fw-semibold small text-truncate" title="<?php echo e($m['title']); ?>"><?php echo e($m['title']); ?></div>
+            <div class="text-muted small text-truncate"><?php echo e($m['author_name'] ?: 'Unknown'); ?></div>
+          </div>
+        </a>
+        <?php if (is_logged_in()): ?>
+        <form method="post" action="<?php echo e(base_url('toggle_bookmark.php')); ?>" class="position-absolute" style="right:6px; top:6px;">
+          <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+          <input type="hidden" name="manga_id" value="<?php echo (int)$m['id']; ?>">
+          <button class="btn btn-sm btn-outline-info" title="Bookmark"><i class="bi bi-bookmark"></i></button>
+        </form>
+        <?php endif; ?>
       </div>
     </div>
   <?php endforeach; ?>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

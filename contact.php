@@ -1,50 +1,67 @@
 <?php
-require_once __DIR__ . '/includes/functions.php';
-$pageTitle = 'Contact';
-$success = null; $error = null;
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/db.php';
+
+$name = trim($_POST['name'] ?? '');
+$email = trim($_POST['email'] ?? '');
+$subject = trim($_POST['subject'] ?? '');
+$message = trim($_POST['message'] ?? '');
+$sent = false;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $message = trim($_POST['message'] ?? '');
-    $token = $_POST['csrf_token'] ?? '';
-    if (!verify_csrf_token($token)) {
-        $error = 'Invalid CSRF token.';
-    } elseif (!$name || !$email || !$message) {
-        $error = 'All fields are required.';
+    if (!verify_csrf($_POST['csrf'] ?? '')) {
+        $_SESSION['flash'] = ['type' => 'danger', 'msg' => 'Invalid CSRF token.'];
+        redirect(base_url('contact'));
+    }
+    if ($name && filter_var($email, FILTER_VALIDATE_EMAIL) && $message) {
+        db_query('INSERT INTO messages (name, email, subject, message) VALUES (:n,:e,:s,:m)', [
+            ':n'=>$name, ':e'=>$email, ':s'=>$subject, ':m'=>$message
+        ]);
+        // Optional email via SMTP or mail() fallback
+        @mail($email, '['.SITE_NAME.'] Message received', "Thanks for contacting us! We'll get back soon.");
+        $_SESSION['flash'] = ['type' => 'success', 'msg' => 'Message sent.'];
+        redirect(base_url('contact'));
     } else {
-        $stmt = db()->prepare('INSERT INTO messages (name, email, message, created_at, is_replied) VALUES (:n,:e,:m,NOW(),0)');
-        $stmt->execute([':n' => $name, ':e' => $email, ':m' => $message]);
-        send_mail(MAIL_TO_ADMIN, 'New Contact Message', "From: $name <$email>\n\n$message");
-        $success = 'Thank you for contacting us!';
+        $_SESSION['flash'] = ['type' => 'warning', 'msg' => 'Please fill all required fields correctly.'];
+        redirect(base_url('contact'));
     }
 }
-include __DIR__ . '/includes/header.php';
 ?>
-<div class="row">
+<div class="row g-3">
   <div class="col-12 col-lg-8">
-    <div class="card">
-      <div class="card-body">
-        <h3>Contact</h3>
-        <?php if ($success): ?><div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-        <?php if ($error): ?><div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
-        <form method="post">
-          <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
-          <div class="mb-3">
+    <div class="cm-card p-3">
+      <h1 class="h5 mb-3">Contact Us</h1>
+      <form method="post">
+        <input type="hidden" name="csrf" value="<?php echo e(csrf_token()); ?>">
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
             <label class="form-label">Name</label>
-            <input class="form-control" type="text" name="name" required>
+            <input class="form-control" name="name" required>
           </div>
-          <div class="mb-3">
+          <div class="col-12 col-md-6">
             <label class="form-label">Email</label>
-            <input class="form-control" type="email" name="email" required>
+            <input type="email" class="form-control" name="email" required>
           </div>
-          <div class="mb-3">
+          <div class="col-12">
+            <label class="form-label">Subject</label>
+            <input class="form-control" name="subject" required>
+          </div>
+          <div class="col-12">
             <label class="form-label">Message</label>
-            <textarea class="form-control" name="message" rows="5" required></textarea>
+            <textarea class="form-control" rows="5" name="message" required></textarea>
           </div>
-          <button class="btn btn-primary" type="submit">Send</button>
-        </form>
-      </div>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-gradient">Send</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="cm-card p-3 h-100">
+      <h2 class="h6">Support</h2>
+      <p class="text-muted small">We usually respond within 1-2 business days.</p>
     </div>
   </div>
 </div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
