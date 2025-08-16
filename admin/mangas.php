@@ -36,19 +36,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         db_query('UPDATE mangas SET title=:t, slug=:s, author_id=:a, description=:d, release_date=:r' . ($coverPath?', cover_image=:c':'') . ' WHERE id=:id', [
             ':t'=>$title, ':s'=>$slug, ':a'=>$authorId, ':d'=>$description, ':r'=>$release, ':id'=>$id
         ] + ($coverPath?[':c'=>$coverPath]:[]));
+        $mid = $id;
         $_SESSION['flash']=['type'=>'success','msg'=>'Manga updated'];
     } else {
         db_query('INSERT INTO mangas (title, slug, author_id, description, release_date, cover_image) VALUES (:t,:s,:a,:d,:r,:c)', [
             ':t'=>$title, ':s'=>$slug, ':a'=>$authorId, ':d'=>$description, ':r'=>$release, ':c'=>$coverPath ?: 'uploads/mangas/placeholder.svg'
         ]);
+        $mid = (int)db_last_insert_id();
         $_SESSION['flash']=['type'=>'success','msg'=>'Manga created'];
     }
+
+    // Update genre mappings
+    db_query('DELETE FROM manga_genres WHERE manga_id=:m', [':m'=>$mid]);
+    $genresPosted = $_POST['genres'] ?? [];
+    foreach ($genresPosted as $gid) {
+        $gid = (int)$gid; if ($gid <= 0) continue;
+        db_query('INSERT IGNORE INTO manga_genres (manga_id, genre_id) VALUES (:m,:g)', [':m'=>$mid, ':g'=>$gid]);
+    }
+
     redirect(base_url('admin/mangas.php'));
 }
 
 $editing = null;
 if ($action === 'edit' && isset($_GET['id'])) {
     $editing = db_query('SELECT * FROM mangas WHERE id=:id', [':id'=>(int)$_GET['id']])->fetch();
+}
+
+$allGenres = db_query('SELECT * FROM genres ORDER BY name')->fetchAll();
+$selectedGenreIds = [];
+if ($editing) {
+    $selectedGenreIds = db_query('SELECT genre_id FROM manga_genres WHERE manga_id=:m', [':m'=>(int)$editing['id']])->fetchAll(PDO::FETCH_COLUMN);
 }
 
 $rows = db_query('SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN authors a ON a.id=m.author_id ORDER BY m.updated_at DESC')->fetchAll();
@@ -86,6 +103,19 @@ $rows = db_query('SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN auth
         <div class="col-12 col-md-6">
           <label class="form-label">Cover Image</label>
           <input type="file" class="form-control" name="cover" accept="image/*">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Genres</label>
+          <div class="row">
+            <?php foreach ($allGenres as $g): $gid=(int)$g['id']; $checked = in_array($gid, $selectedGenreIds, true) ? 'checked' : ''; ?>
+              <div class="col-6 col-md-4 col-lg-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="genres[]" value="<?php echo $gid; ?>" id="g<?php echo $gid; ?>" <?php echo $checked; ?>>
+                  <label class="form-check-label" for="g<?php echo $gid; ?>"><?php echo e($g['name']); ?></label>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
         </div>
       </div>
       <div class="mt-3">

@@ -38,8 +38,8 @@ function import_from_mangadex(string $query = '', string $lang = IMPORT_LANGUAGE
     foreach (($res['data'] ?? []) as $m) {
         $mdId = $m['id'] ?? null;
         $attrs = $m['attributes'] ?? [];
-        $title = $attrs['title'][$lang] ?? array_values($attrs['title'])[0] ?? 'Untitled';
-        $desc = $attrs['description'][$lang] ?? '';
+        $title = $attrs['title'][$lang] ?? (is_array($attrs['title']) ? (array_values($attrs['title'])[0] ?? 'Untitled') : 'Untitled');
+        $desc = $attrs['description'][$lang] ?? (is_array($attrs['description'] ?? null) ? (array_values($attrs['description'])[0] ?? '') : ($attrs['description'] ?? ''));
         $slug = slugify($title);
 
         $authorName = null;
@@ -76,6 +76,17 @@ function import_from_mangadex(string $query = '', string $lang = IMPORT_LANGUAGE
             $mangaId = (int)db_last_insert_id();
         }
 
+        // Map genres from tags
+        $tags = $attrs['tags'] ?? [];
+        foreach ($tags as $tag) {
+            $tAttr = $tag['attributes'] ?? [];
+            $name = $tAttr['name'][$lang] ?? (is_array($tAttr['name'] ?? null) ? (array_values($tAttr['name'])[0] ?? null) : null);
+            if (!$name) continue;
+            db_query('INSERT IGNORE INTO genres (name) VALUES (:n)', [':n'=>$name]);
+            $gid = db_query('SELECT id FROM genres WHERE name=:n', [':n'=>$name])->fetchColumn();
+            if ($gid) { db_query('INSERT IGNORE INTO manga_genres (manga_id, genre_id) VALUES (:m,:g)', [':m'=>$mangaId, ':g'=>(int)$gid]); }
+        }
+
         // Chapters
         $chapRes = md_get('/chapter', [
             'manga' => $mdId,
@@ -87,22 +98,22 @@ function import_from_mangadex(string $query = '', string $lang = IMPORT_LANGUAGE
             $chId = $ch['id'] ?? null;
             $cat = $ch['attributes'] ?? [];
             $number = (string)($cat['chapter'] ?? '') ?: ($cat['title'] ?? '0');
-            $title = $cat['title'] ?? '';
+            $ctitle = $cat['title'] ?? '';
             if (!$chId || !$number) continue;
 
             $exists = db_query('SELECT id FROM chapters WHERE mangadex_chapter_id=:cid OR (manga_id=:m AND chapter_number=:n)', [':cid'=>$chId, ':m'=>$mangaId, ':n'=>$number])->fetch();
             if ($exists) { continue; }
 
             db_query('INSERT INTO chapters (manga_id, mangadex_chapter_id, chapter_number, title, upload_source) VALUES (:m,:cid,:n,:t,\'mangadex\')', [
-                ':m'=>$mangaId, ':cid'=>$chId, ':n'=>$number, ':t'=>$title
+                ':m'=>$mangaId, ':cid'=>$chId, ':n'=>$number, ':t'=>$ctitle
             ]);
             $chapterId = (int)db_last_insert_id();
 
             // At-home server to get image base URL
             $atHome = md_get('/at-home/server/' . $chId);
             $base = ($atHome['baseUrl'] ?? '') . '/data/';
-            $hash = $cat['hash'] ?? ($atHome['chapter']['hash'] ?? '');
-            $pages = $cat['data'] ?? ($atHome['chapter']['data'] ?? []);
+            $hash = $atHome['chapter']['hash'] ?? '';
+            $pages = $atHome['chapter']['data'] ?? [];
             $pageNo = 1;
             foreach ($pages as $file) {
                 $imgUrl = $base . $hash . '/' . $file;

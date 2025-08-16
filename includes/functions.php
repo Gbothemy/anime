@@ -6,8 +6,7 @@ function base_url(string $path = ''): string {
     if (!$base) {
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '/') ?: '/';
-        $base = rtrim($protocol . $host . $scriptName, '/');
+        $base = rtrim($protocol . $host, '/');
     }
     $path = ltrim($path, '/');
     return $path ? $base . '/' . $path : $base;

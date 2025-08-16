@@ -3,7 +3,9 @@ require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/db.php';
 
 $featured = db_query("SELECT * FROM mangas ORDER BY popularity_score DESC, updated_at DESC LIMIT 5")->fetchAll();
-$latest = db_query("SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN authors a ON a.id=m.author_id ORDER BY updated_at DESC LIMIT 12")->fetchAll();
+$latest = db_query("SELECT m.*, a.name AS author_name,
+  (SELECT GROUP_CONCAT(g.name SEPARATOR ', ') FROM manga_genres mg JOIN genres g ON g.id=mg.genre_id WHERE mg.manga_id=m.id) AS genre_names
+  FROM mangas m LEFT JOIN authors a ON a.id=m.author_id ORDER BY updated_at DESC LIMIT 12")->fetchAll();
 ?>
 <div class="cm-hero p-3 p-md-4 mb-4">
   <div id="homeCarousel" class="carousel slide" data-bs-ride="carousel">
@@ -33,7 +35,8 @@ $latest = db_query("SELECT m.*, a.name AS author_name FROM mangas m LEFT JOIN au
           <img class="manga-cover" src="<?php echo e(base_url($m['cover_image'] ?: 'uploads/mangas/placeholder.svg')); ?>" alt="<?php echo e($m['title']); ?>">
           <div class="p-2">
             <div class="fw-semibold small text-truncate" title="<?php echo e($m['title']); ?>"><?php echo e($m['title']); ?></div>
-            <div class="text-muted small text-truncate"><?php echo e($m['author_name'] ?: 'Unknown'); ?></div>
+            <div class="text-muted small text-truncate"><?php echo e($m['genre_names'] ?: '—'); ?></div>
+            <div class="text-muted small"><?php echo e(mb_strimwidth(strip_tags($m['description'] ?? ''), 0, 60, '…')); ?></div>
           </div>
         </a>
         <?php if (is_logged_in()): ?>
