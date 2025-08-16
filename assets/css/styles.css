@@ -1,0 +1,30 @@
+/* Base styles */
+body { background-color: #0f0f10; color: #e8e8e8; }
+.card { background-color: #1b1b1d; border-color: #2a2a2d; }
+.card .card-title, .card .card-text { color: #e8e8e8; }
+.navbar-dark .navbar-nav .nav-link { color: #e8e8e8; }
+.navbar-dark .navbar-brand { color: #fff; }
+.form-control, .form-select { background-color: #1b1b1d; color: #e8e8e8; border-color: #2a2a2d; }
+.form-control::placeholder { color: #9a9a9a; }
+.btn-outline-light { border-color: #e8e8e8; }
+
+/* Reader */
+.reader-container { max-width: 980px; margin: 0 auto; }
+.reader-image { width: 100%; height: auto; display: block; margin: 0 auto 16px auto; }
+.reader-toolbar { position: sticky; top: 0; z-index: 1030; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); }
+.reader-light { background-color: #f7f7f7; color: #111; }
+.reader-light .card { background-color: #fff; border-color: #eee; }
+.reader-light .reader-toolbar { background: rgba(255,255,255,0.85); }
+
+/* Pagination */
+.pagination .page-link { background-color: #1b1b1d; color: #e8e8e8; border-color: #2a2a2d; }
+.pagination .page-item.active .page-link { background-color: #0d6efd; border-color: #0d6efd; }
+
+/* Grid cards */
+.manga-card img { object-fit: cover; height: 260px; }
+.manga-meta { font-size: 0.85rem; color: #bdbdbd; }
+
+/* Footer stickiness */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+footer { margin-top: auto; }

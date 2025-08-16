@@ -1,0 +1,16 @@
+RewriteEngine On
+# SEO-friendly routes
+RewriteRule ^manga/([^/]+)/?$ manga.php?slug=$1 [L,QSA]
+RewriteRule ^read/([^/]+)/chapter/(.+)/?$ read.php?manga=$1&chapter=$2 [L,QSA]
+
+# Deny direct access to scripts
+RewriteRule ^scripts/ - [F]
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpg "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/gif "access plus 30 days"
+</IfModule>
